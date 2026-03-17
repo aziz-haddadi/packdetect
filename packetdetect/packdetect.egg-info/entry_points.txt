@@ -1,0 +1,2 @@
+[console_scripts]
+packdetect = packdetect.__main__:main

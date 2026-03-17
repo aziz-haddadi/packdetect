@@ -1,0 +1,5 @@
+rich>=13.0
+
+[dev]
+pytest>=8.0
+pytest-cov

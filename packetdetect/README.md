@@ -40,13 +40,13 @@ Detection runs in three layers, each feeding into a weighted confidence score:
                           Verdict + confidence%
 ```
 
-**Layer 1 — Entropy:**  
+**Layer 1 — Entropy:**
 Shannon entropy (0–8 bits/byte). Packed/encrypted sections score above 7.0. Normal compiled code sits between 4.5–6.5.
 
-**Layer 2 — Signatures:**  
+**Layer 2 — Signatures:**
 Searches for packer-specific magic bytes (e.g. `UPX!`) and known section names (e.g. `.MPRESS1`). Contributes up to 95% base confidence.
 
-**Layer 3 — Heuristics (unknown packer detection):**  
+**Layer 3 — Heuristics (unknown packer detection):**
 Structural anomalies that fire even when no signature matches:
 - Virtual-only sections (raw_size ≈ 0, virtual_size >> 0) — packer decompression placeholder
 - Entry point outside `.text`
@@ -63,10 +63,15 @@ Structural anomalies that fire even when no signature matches:
 git clone https://github.com/you/packdetect
 cd packdetect
 
-# Install (editable)
+# Create and activate a virtual environment
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+source .venv/bin/activate     # Mac / Linux
+
+# Install (editable mode — code changes apply instantly)
 pip install -e .
 
-# Or without Rich (plain mode only)
+# Or without Rich (plain ASCII mode only)
 pip install -e . --no-deps
 ```
 
@@ -75,6 +80,70 @@ pip install -e . --no-deps
 - `rich >= 13.0` (optional — install for coloured output)
 - `upx` on PATH (optional — required for auto-unpack of UPX binaries)
 - `mpress` on PATH (optional — required for auto-unpack of MPRESS binaries)
+
+---
+
+## Quick start — test with the included real malware sample
+
+This repository ships with a **real UPX-packed malware sample** inside `malware-lab/` so you can test the tool against a genuine packed binary immediately.
+
+> ⚠️ **The sample is provided for static analysis only — do not execute it.**
+> Keep it in an isolated folder or VM. It was obtained from [MalwareBazaar](https://bazaar.abuse.ch),
+> a public malware repository maintained by abuse.ch for the security research community.
+
+### Full scan with Rich output
+
+```powershell
+packdetect scan ..\..\malware-lab\7d7655e9446fd41dc1ae859435f39c250964532bc604c9bf6d737992430d645e.exe
+```
+
+### Plain ASCII output (no colours)
+
+```powershell
+packdetect scan ..\..\malware-lab\7d7655e9446fd41dc1ae859435f39c250964532bc604c9bf6d737992430d645e.exe --plain
+```
+
+### Save a JSON report
+
+```powershell
+packdetect scan ..\..\malware-lab\7d7655e9446fd41dc1ae859435f39c250964532bc604c9bf6d737992430d645e.exe --save-json
+```
+
+This writes a `.packdetect.json` report alongside the sample containing the full analysis — entropy per section, signature match, heuristic findings, and verdict.
+
+### Attempt auto-unpack
+
+Make sure `upx` is installed and on your PATH first ([download here](https://upx.github.io)), then:
+
+```powershell
+packdetect unpack ..\..\malware-lab\7d7655e9446fd41dc1ae859435f39c250964532bc604c9bf6d737992430d645e.exe
+```
+
+This calls `upx -d` under the hood and produces a `_unpacked.exe` next to the original. Re-scan the unpacked file to confirm the entropy dropped back to normal range (~5.x):
+
+```powershell
+packdetect scan ..\..\malware-lab\7d7655e9446fd41dc1ae859435f39c250964532bc604c9bf6d737992430d645e_unpacked.exe
+```
+
+### Expected output
+
+```
+╭──────────────────────── Verdict ─────────────────────────╮
+│  ⚠  PACKED                                                │
+│                                                            │
+│  Confidence : ██████████  97%                             │
+│  Risk level : HIGH                                        │
+│  Packer     : UPX                                         │
+╰────────────────────────────────────────────────────────────╯
+
+  Section    Entropy    Bar                        Flag
+  ─────────  ─────────  ─────────────────────────  ──────────
+  UPX0       0.0000     ░░░░░░░░░░░░░░░░░░░░░░░░   NORMAL
+  UPX1       7.88xx     ████████████████████████   HIGH
+  .rsrc      3.4xxx     ██████████░░░░░░░░░░░░░░   NORMAL
+
+  [HIT]  UPX — magic bytes "UPX!" found in stub header
+```
 
 ---
 
@@ -132,6 +201,72 @@ packdetect batch ./samples/ --save-json    # saves packdetect_batch.json
 
 ---
 
+## Running the test suite
+
+The project ships with **26 unit tests** covering the full engine — entropy math, PE parsing,
+signature detection, heuristic logic, verdict computation, and end-to-end analysis.
+They use only **synthetic in-memory PE binaries** built with `struct` — no real malware required.
+
+### Install pytest and run
+
+```bash
+pip install pytest
+pytest tests/ -v
+```
+
+### Expected output
+
+```
+tests/test_engine.py::TestShannonEntropy::test_all_zeros                          PASSED
+tests/test_engine.py::TestShannonEntropy::test_all_same_byte                      PASSED
+tests/test_engine.py::TestShannonEntropy::test_two_equal_bytes                    PASSED
+tests/test_engine.py::TestShannonEntropy::test_uniform_distribution               PASSED
+tests/test_engine.py::TestShannonEntropy::test_random_like_data                   PASSED
+tests/test_engine.py::TestShannonEntropy::test_empty                              PASSED
+tests/test_engine.py::TestPEParser::test_parses_minimal_pe                        PASSED
+tests/test_engine.py::TestPEParser::test_rejects_non_pe                           PASSED
+tests/test_engine.py::TestPEParser::test_rejects_too_short                        PASSED
+tests/test_engine.py::TestPEParser::test_upx_section_names                        PASSED
+tests/test_engine.py::TestSignatureScanner::test_upx_magic_detected               PASSED
+tests/test_engine.py::TestSignatureScanner::test_upx_section_name_detected        PASSED
+tests/test_engine.py::TestSignatureScanner::test_mpress_section_name_detected     PASSED
+tests/test_engine.py::TestSignatureScanner::test_clean_binary_no_matches          PASSED
+tests/test_engine.py::TestSignatureScanner::test_confidence_is_positive           PASSED
+tests/test_engine.py::TestHeuristics::test_clean_no_heuristics                    PASSED
+tests/test_engine.py::TestHeuristics::test_high_entropy_flagged                   PASSED
+tests/test_engine.py::TestHeuristics::test_virtual_only_section_flagged           PASSED
+tests/test_engine.py::TestHeuristics::test_high_entropy_exec_section_flagged      PASSED
+tests/test_engine.py::TestVerdictComputation::test_signature_hit_gives_packed     PASSED
+tests/test_engine.py::TestVerdictComputation::test_no_sig_high_heuristic_gives_unknown PASSED
+tests/test_engine.py::TestVerdictComputation::test_clean_binary_verdict           PASSED
+tests/test_engine.py::TestVerdictComputation::test_suspicious_medium_score        PASSED
+tests/test_engine.py::TestAnalyseIntegration::test_clean_binary                   PASSED
+tests/test_engine.py::TestAnalyseIntegration::test_upx_magic_in_file             PASSED
+tests/test_engine.py::TestAnalyseIntegration::test_result_fields_populated        PASSED
+
+26 passed in 0.22s
+```
+
+### Run with coverage report
+
+```bash
+pip install pytest-cov
+pytest tests/ -v --cov=packdetect --cov-report=term-missing
+```
+
+### What each test class covers
+
+| Class | What it tests |
+|-------|--------------|
+| `TestShannonEntropy` | Entropy math edge cases — all zeros, uniform distribution, random data |
+| `TestPEParser` | PE header parsing — valid PE32, ELF rejection, section name decoding |
+| `TestSignatureScanner` | UPX magic bytes, MPRESS section names, clean file returns empty list |
+| `TestHeuristics` | Virtual-only sections, high-entropy exec sections, clean binary baseline |
+| `TestVerdictComputation` | Known sig → packed, heuristics only → unknown packer, clean baseline |
+| `TestAnalyseIntegration` | Full `analyse()` pipeline on synthetic PE binaries end-to-end |
+
+---
+
 ## Exit codes
 
 | Code | Meaning |
@@ -143,6 +278,7 @@ packdetect batch ./samples/ --save-json    # saves packdetect_batch.json
 | 5 | Unpack attempted but failed |
 
 Use exit codes in scripts:
+
 ```bash
 packdetect scan "$file" --plain
 if [ $? -eq 2 ]; then
@@ -203,8 +339,13 @@ packdetect/
 │   ├── __main__.py          CLI — argparse, commands: scan / unpack / batch
 │   ├── engine.py            analysis engine — PE parser, entropy, signatures, heuristics
 │   └── output.py            display — Rich renderer, plain renderer, JSON serialiser
+├── malware-lab/
+│   └── 7d7655e9...exe       real UPX-packed malware sample for testing
 ├── tests/
-│   └── test_engine.py       32 unit tests (no real binaries needed)
+│   ├── __init__.py
+│   └── test_engine.py       26 unit tests (no real binaries needed)
+├── .gitignore
+├── LICENSE
 ├── pyproject.toml
 ├── requirements.txt
 └── README.md
@@ -231,17 +372,6 @@ Open `packdetect/engine.py` and add an entry to `SIGNATURE_DB`:
 
 ---
 
-## Running tests
-
-```bash
-pip install pytest
-pytest tests/ -v
-```
-
-All 32 tests use only synthetic in-memory PE binaries — no malware samples required.
-
----
-
 ## Concepts covered (portfolio talking points)
 
 | Concept | Where |
@@ -261,4 +391,7 @@ All 32 tests use only synthetic in-memory PE binaries — no malware samples req
 
 ## Disclaimer
 
-This tool is for educational and legitimate security research purposes only.
+This tool and the included sample are for **educational and legitimate security research purposes only**.
+The malware sample in `malware-lab/` was obtained from [MalwareBazaar](https://bazaar.abuse.ch) — a public
+repository maintained by abuse.ch for the security research community.
+Do not execute the sample outside of an isolated environment. The authors accept no responsibility for misuse.

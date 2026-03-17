@@ -1,0 +1,15 @@
+LICENSE
+README.md
+pyproject.toml
+packdetect/__init__.py
+packdetect/__main__.py
+packdetect/engine.py
+packdetect/output.py
+packdetect.egg-info/PKG-INFO
+packdetect.egg-info/SOURCES.txt
+packdetect.egg-info/dependency_links.txt
+packdetect.egg-info/entry_points.txt
+packdetect.egg-info/requires.txt
+packdetect.egg-info/top_level.txt
+tests/__init__.py
+tests/test_engine.py
