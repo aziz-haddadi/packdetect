@@ -1,0 +1,6 @@
+# Runtime
+rich>=13.0          # coloured terminal output (optional — plain mode works without it)
+
+# Development / testing
+pytest>=8.0
+pytest-cov>=5.0
